@@ -2,6 +2,7 @@ package gohessian
 
 import (
 	"bufio"
+	"reflect"
 )
 
 const (
@@ -18,6 +19,8 @@ type Hessian struct {
 }
 
 type Client struct {
-	Host string
-	URL  string
+	Host      string
+	URL       string
+	replyData reflect.Value
+	replyMap  interface{}
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 )
 
 type hessianRequest struct {
@@ -32,7 +33,7 @@ func (c Client) String() string {
 // Invoke send a request to hessian service and return the result of response
 // method string  => hessian service method
 // params ...Any  => request param
-func (c *Client) Invoke(method string, params ...Any) (interface{}, error) {
+func (c *Client) Invoke(method string, params ...interface{}) (interface{}, error) {
 	reqURL := c.Host + c.URL
 	r := &hessianRequest{}
 	r.packHead(method)
@@ -60,7 +61,22 @@ func (c *Client) Invoke(method string, params ...Any) (interface{}, error) {
 		return nil, err
 	}
 
+	c.replyMap = v
 	return v, nil
+}
+
+// bind reply to v, v must be a pointer
+func (c *Client) BindResult(v interface{}) error {
+	if reflect.ValueOf(v).Kind() != reflect.Ptr {
+		return errors.New("not a pointer")
+	}
+	if reflect.ValueOf(v).IsNil() {
+		return errors.New("nil pointer")
+	}
+
+	c.replyData = extractData(reflect.ValueOf(c.replyMap), reflect.TypeOf(v))
+	reflect.ValueOf(v).Elem().Set(c.replyData.Elem())
+	return nil
 }
 
 //httpPost send HTTP POST request, return bytes in body

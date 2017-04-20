@@ -1,10 +1,11 @@
 # gohessian
 
-gohessian implements  Hessian   Protocol by golang
+A sample hessian protocol implementation for Go-lang
+
 
 ### Install
 ```sh
-$ go get github.com/hackez/gohessian
+$ go get github.com/MenInBack/gohessian
 ```
 
 ### Usage
@@ -14,7 +15,7 @@ package main
 
 import (
     "fmt"
-    gh "github.com/hackez/gohessian"
+    gh "github.com/MenInBack/gohessian"
 )
 
 func main() {

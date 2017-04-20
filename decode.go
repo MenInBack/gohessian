@@ -173,8 +173,8 @@ func (h *Hessian) Parse() (v interface{}, err error) {
 		v = bin_chunks
 
 	case 'V': //list
-		h.read_type() //TODO 类型怎么用?
-		var list_chunks []Any
+		h.read_type()
+		var list_chunks []interface{}
 		if h.peek_byte() == 'l' {
 			h.next(5)
 		}
@@ -191,8 +191,8 @@ func (h *Hessian) Parse() (v interface{}, err error) {
 		h.append_refs(&list_chunks)
 
 	case 'M': //map
-		h.read_type() //TODO 类型怎么用?
-		var map_chunks = make(map[Any]Any)
+		h.read_type()
+		var map_chunks = make(map[interface{}]interface{})
 		for h.peek_byte() != 'z' {
 			_kv, _ke := h.Parse()
 			if _ke != nil {

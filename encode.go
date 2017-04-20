@@ -12,25 +12,30 @@ import (
 )
 
 /*
-对 基本数据进行 Hessian 编码
-支持:
+encode values of types:
 	- int int32 int64
 	- float64
+	- bool
 	- time.Time
 	- []byte
-	- []interface{}
-	- map[interface{}]interface{}
+	- slice
+	- array
+	- map
+	- struct
 	- nil
-	- bool
-	- object // 预计支持中...
 */
 
 type Encoder struct {
 }
 
+type HessianName struct{}
+
 const (
 	CHUNK_SIZE    = 0x8000
 	ENCODER_DEBUG = false
+	hessianTag    = "hs"
+	nameTypeName  = "HessianName"
+	fieldName     = "Name"
 )
 
 func init() {
@@ -42,9 +47,18 @@ func init() {
 
 // Encode do encode var to binary under hessian protocol
 func Encode(v interface{}) (b []byte, err error) {
+	t := reflect.TypeOf(v)
 
+	// dereference any pointer
+	for t.Kind() == reflect.Ptr {
+		if reflect.ValueOf(v).IsNil() {
+			return encodeNull(v)
+		}
+		v = reflect.ValueOf(v).Elem().Interface()
+	}
+
+	// basic types
 	switch v.(type) {
-
 	case []byte:
 		b, err = encodeBinary(v.([]byte))
 
@@ -72,22 +86,23 @@ func Encode(v interface{}) (b []byte, err error) {
 
 	case string:
 		b, err = encodeString(v.(string))
+	}
 
-	case nil:
-		b, err = encodeNull(v)
+	// reference types
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array:
+		b, err = encodeList(v)
 
-	case []Any:
-		b, err = encodeList(v.([]Any))
+	case reflect.Struct:
+		b, err = encodeStruct(v)
 
-	case map[Any]Any:
-		b, err = encodeMap(v.(map[Any]Any))
-
-	case Any:
-		b, err = encodeObject(v.(Any))
+	case reflect.Map:
+		b, err = encodeMap(v)
 
 	default:
-		return nil, errors.New("unknow type")
+		return nil, errors.New("unkown kind")
 	}
+
 	if ENCODER_DEBUG {
 		log.Println(SprintHex(b))
 	}
@@ -259,55 +274,109 @@ func encodeString(v string) (b []byte, err error) {
 	return
 }
 
-// list
-func encodeList(v []Any) (b []byte, err error) {
-	listLen := len(v)
-	var (
-		lenB []byte
-		tmpV []byte
-	)
-
+// list for slice and array
+func encodeList(in interface{}) (b []byte, err error) {
+	if reflect.TypeOf(in).Kind() != reflect.Slice && reflect.TypeOf(in).Kind() != reflect.Array {
+		return nil, errors.New("invalid slice")
+	}
 	b = append(b, 'V')
 
-	if lenB, err = PackInt32(int32(listLen)); err != nil {
-		b = nil
-		return
+	v := reflect.ValueOf(in)
+	b_len, err := PackInt32(int32(v.Len()))
+	if err != nil {
+		return nil, err
 	}
 	b = append(b, 'l')
-	b = append(b, lenB...)
+	b = append(b, b_len...)
 
-	for _, a := range v {
-		if tmpV, err = Encode(a); err != nil {
-			b = nil
-			return
+	for i := 0; i < v.Len(); i++ {
+		tmp, err := Encode(v.Index(i).Interface())
+		if err != nil {
+			fmt.Print(err)
+			return nil, err
 		}
-		b = append(b, tmpV...)
+		b = append(b, tmp...)
 	}
 	b = append(b, 'z')
-	return
+	return b, nil
+}
+
+// encode struct as map
+func encodeStruct(in interface{}) (b []byte, err error) {
+	if reflect.TypeOf(in).Kind() != reflect.Struct {
+		return nil, errors.New("invalid struct")
+	}
+
+	v := reflect.ValueOf(in)
+	t := reflect.TypeOf(in)
+	name := getStructName(t)
+	b = append(b, 'M', 't')
+	l_name, err := PackInt16(int16(len(name)))
+	if err != nil {
+		return nil, err
+	}
+	b = append(b, l_name...)
+	b = append(b, name...)
+	for i := 0; i < t.NumField(); i++ {
+		tag := getFieldTag(t.Field(i))
+		if t.Field(i).Type.Name() == nameTypeName {
+			continue // pass hessian name field
+		}
+		tmp_k, err := encodeString(tag)
+		if err != nil {
+			return nil, err
+		}
+		tmp_v, err := Encode(v.Field(i).Interface())
+		if err != nil {
+			return nil, err
+		}
+		b = append(b, tmp_k...)
+		b = append(b, tmp_v...)
+	}
+	b = append(b, 'z')
+	return b, nil
 }
 
 // map
-func encodeMap(v map[Any]Any) (b []byte, err error) {
-	var (
-		tmpK []byte
-		tmpV []byte
-	)
+func encodeMap(in interface{}) (b []byte, err error) {
+	if reflect.TypeOf(in).Kind() != reflect.Map {
+		return nil, errors.New("invalid map")
+	}
 	b = append(b, 'M')
-	for k, v := range v {
-		if tmpK, err = Encode(k); err != nil {
-			b = nil
-			return
+	v := reflect.ValueOf(in)
+
+	for _, key := range v.MapKeys() {
+		tmp_k, err := Encode(key.Interface())
+		if err != nil {
+			return nil, err
 		}
-		if tmpV, err = Encode(v); err != nil {
-			b = nil
-			return
+		tmp_v, err := Encode(v.MapIndex(key).Interface())
+		if err != nil {
+			return nil, err
 		}
-		b = append(b, tmpK...)
-		b = append(b, tmpV...)
+		b = append(b, tmp_k...)
+		b = append(b, tmp_v...)
 	}
 	b = append(b, 'z')
+	return b, nil
+}
+
+func getStructName(t reflect.Type) (name string) {
+	nameField, ok := t.FieldByName(fieldName)
+	if ok {
+		name = nameField.Tag.Get(hessianTag)
+	} else {
+		name = t.Name()
+	}
 	return
+}
+
+func getFieldTag(f reflect.StructField) string {
+	tag := f.Tag.Get(hessianTag)
+	if tag == "" {
+		tag = f.Name
+	}
+	return tag
 }
 
 // object

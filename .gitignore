@@ -1,4 +1,14 @@
-tmp
-doc/wanda.txt
-.idea
-.vscode
+#eclipse files
+.project
+.settings
+#macOS files
+.DS_Store
+#intellij idea files
+.idea/
+*.iml
+*.vpj
+*.vpw
+*.vpwhistu
+*.vtg
+#vscode
+.vscode/

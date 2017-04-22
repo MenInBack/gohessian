@@ -1,29 +1,25 @@
+// Encode values of types to hessian protocol 2.0:
+//	- int, int32, int64
+//	- float64
+//	- bool
+//	- time.Time
+//	- []byte
+//	- slice
+//	- array
+//	- map
+//	- struct
+//	- nil
 package gohessian
 
 import (
 	"bytes"
 	"errors"
-	"fmt"
-	"log"
 	"reflect"
-	"runtime"
 	"time"
 	"unicode/utf8"
-)
 
-/*
-encode values of types:
-	- int int32 int64
-	- float64
-	- bool
-	- time.Time
-	- []byte
-	- slice
-	- array
-	- map
-	- struct
-	- nil
-*/
+	log "github.com/cihub/seelog"
+)
 
 type Encoder struct {
 }
@@ -38,12 +34,12 @@ const (
 	fieldName     = "Name"
 )
 
-func init() {
-	_, filename, _, _ := runtime.Caller(1)
-	if ENCODER_DEBUG {
-		log.SetPrefix(filename + "\n")
-	}
-}
+//func init() {
+//	_, filename, _, _ := runtime.Caller(1)
+//	if ENCODER_DEBUG {
+//		log.SetPrefix(filename + "\n")
+//	}
+//}
 
 // Encode do encode var to binary under hessian protocol
 func Encode(v interface{}) (b []byte, err error) {
@@ -104,16 +100,12 @@ func Encode(v interface{}) (b []byte, err error) {
 	}
 
 	if ENCODER_DEBUG {
-		log.Println(SprintHex(b))
+		log.Debug(SprintHex(b))
 	}
 	return
 }
 
-//=====================================
-//对各种数据类型的编码
-//=====================================
-
-// binary
+// encodeBinary binary
 func encodeBinary(v []byte) (b []byte, err error) {
 	var (
 		tag  byte
@@ -156,7 +148,7 @@ func encodeBinary(v []byte) (b []byte, err error) {
 	return
 }
 
-// boolean
+// encodeBool encode boolean
 func encodeBool(v bool) (b []byte, err error) {
 	if v == true {
 		b = append(b, 'T')
@@ -166,7 +158,7 @@ func encodeBool(v bool) (b []byte, err error) {
 	return
 }
 
-// date
+// encodeTime encode date
 func encodeTime(v time.Time) (b []byte, err error) {
 	var tmpV []byte
 	b = append(b, 'd')
@@ -178,7 +170,7 @@ func encodeTime(v time.Time) (b []byte, err error) {
 	return
 }
 
-// double
+// encodeFloat64 encode double
 func encodeFloat64(v float64) (b []byte, err error) {
 	var tmpV []byte
 	if tmpV, err = PackFloat64(v); err != nil {
@@ -190,7 +182,7 @@ func encodeFloat64(v float64) (b []byte, err error) {
 	return
 }
 
-// int
+// encodeInt32 encode int
 func encodeInt32(v int32) (b []byte, err error) {
 	var tmpV []byte
 	if tmpV, err = PackInt32(v); err != nil {
@@ -202,7 +194,7 @@ func encodeInt32(v int32) (b []byte, err error) {
 	return
 }
 
-// long
+// encodeInt64 encode long
 func encodeInt64(v int64) (b []byte, err error) {
 	var tmpV []byte
 	if tmpV, err = PackInt64(v); err != nil {
@@ -215,13 +207,13 @@ func encodeInt64(v int64) (b []byte, err error) {
 
 }
 
-// null
+// encodeNull encode null
 func encodeNull(v interface{}) (b []byte, err error) {
 	b = append(b, 'N')
 	return
 }
 
-// string
+// encodeString encode string
 func encodeString(v string) (b []byte, err error) {
 	var (
 		lenB []byte
@@ -237,7 +229,7 @@ func encodeString(v string) (b []byte, err error) {
 		}
 	)
 
-	if v == "" {
+	if "" == v {
 		if lenB, err = PackUint16(uint16(rLen)); err != nil {
 			b = nil
 			return
@@ -274,7 +266,7 @@ func encodeString(v string) (b []byte, err error) {
 	return
 }
 
-// list for slice and array
+// encodeList encode list for slice and array
 func encodeList(in interface{}) (b []byte, err error) {
 	if reflect.TypeOf(in).Kind() != reflect.Slice && reflect.TypeOf(in).Kind() != reflect.Array {
 		return nil, errors.New("invalid slice")
@@ -291,8 +283,8 @@ func encodeList(in interface{}) (b []byte, err error) {
 
 	for i := 0; i < v.Len(); i++ {
 		tmp, err := Encode(v.Index(i).Interface())
-		if err != nil {
-			fmt.Print(err)
+		if nil != err {
+			log.Error(err)
 			return nil, err
 		}
 		b = append(b, tmp...)
@@ -301,7 +293,7 @@ func encodeList(in interface{}) (b []byte, err error) {
 	return b, nil
 }
 
-// encode struct as map
+// encodeStruct encode struct as map
 func encodeStruct(in interface{}) (b []byte, err error) {
 	if reflect.TypeOf(in).Kind() != reflect.Struct {
 		return nil, errors.New("invalid struct")
@@ -337,7 +329,7 @@ func encodeStruct(in interface{}) (b []byte, err error) {
 	return b, nil
 }
 
-// map
+// encodeMap encode map
 func encodeMap(in interface{}) (b []byte, err error) {
 	if reflect.TypeOf(in).Kind() != reflect.Map {
 		return nil, errors.New("invalid map")
@@ -361,6 +353,7 @@ func encodeMap(in interface{}) (b []byte, err error) {
 	return b, nil
 }
 
+// getStructName return struct name
 func getStructName(t reflect.Type) (name string) {
 	nameField, ok := t.FieldByName(fieldName)
 	if ok {
@@ -371,6 +364,7 @@ func getStructName(t reflect.Type) (name string) {
 	return
 }
 
+// getFieldTag return tag of field
 func getFieldTag(f reflect.StructField) string {
 	tag := f.Tag.Get(hessianTag)
 	if tag == "" {
@@ -379,11 +373,11 @@ func getFieldTag(f reflect.StructField) string {
 	return tag
 }
 
-// object
+// encodeObject encode object
 func encodeObject(v Any) (_ []byte, err error) {
 	valueV := reflect.ValueOf(v)
 	typeV := reflect.TypeOf(v)
-	fmt.Println("v => ", v)
+	log.Debug("v => ", v)
 
 	var b bytes.Buffer
 
@@ -410,7 +404,7 @@ func encodeObject(v Any) (_ []byte, err error) {
 		err = errors.New("can not count field length, error: " + err.Error())
 		return b.Bytes(), err
 	} else {
-		log.Println("lenField =>", lenField[1:])
+		log.Debug("lenField =>", lenField[1:])
 		b.Write(lenField[1:])
 	}
 

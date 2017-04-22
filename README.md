@@ -1,11 +1,10 @@
 # gohessian
 
-A sample hessian protocol implementation for Go-lang
-
+A sample hessian 2.0 protocol implementation for Go-lang
 
 ### Install
 ```sh
-$ go get github.com/MenInBack/gohessian
+$ go get -u github.com/MenInBack/gohessian
 ```
 
 ### Usage

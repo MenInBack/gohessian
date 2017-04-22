@@ -3,10 +3,10 @@ package gohessian
 import (
 	"reflect"
 
-	"froad.com/server/common/log"
+	log "github.com/cihub/seelog"
 )
 
-// help extracting map data into struct
+// extractData help extracting map data into struct
 func extractData(data reflect.Value, typ reflect.Type) (rslt reflect.Value) {
 	rslt = reflect.New(typ)
 	value := rslt.Elem()

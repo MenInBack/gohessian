@@ -1,3 +1,4 @@
+// Decode hessian data
 package gohessian
 
 import (
@@ -5,12 +6,10 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	log "github.com/cihub/seelog"
 )
 
-/*
-对 Hessian 数据进行解码
-具体用法见: decode_test.go
-*/
 const (
 	PARSE_DEBUG = true
 )
@@ -19,31 +18,31 @@ func NewHessian(r io.Reader) (h *Hessian) {
 	return &Hessian{reader: bufio.NewReader(r)}
 }
 
-//读取当前字节,指针不前移
-func (h *Hessian) peek_byte() (b byte) {
+// peekByte read the byte and do not move the point
+func (h *Hessian) peekByte() (b byte) {
 	b = h.peek(1)[0]
 	return
 }
 
-//添加引用
-func (h *Hessian) append_refs(v interface{}) {
+// appendRefs append reference
+func (h *Hessian) appendRefs(v interface{}) {
 	h.refs = append(h.refs, v)
 }
 
-//获取缓冲长度
+// len return length of buffer
 func (h *Hessian) len() (l int) {
-	h.peek(1) //需要先读一下资源才能得到已缓冲的长度
+	h.peek(1) // read the resources in order to get the length of buffer
 	l = h.reader.Buffered()
 	return
 }
 
-//读取 Hessian 结构中的一个字节,并后移一个字节
-func (h *Hessian) read_byte() (c byte, err error) {
+// readByte read a byte in hessian struct and move back a byte
+func (h *Hessian) readByte() (c byte, err error) {
 	c, err = h.reader.ReadByte()
 	return
 }
 
-//读取指定长度的字节,并后移N个字节
+// next read the bytes of the specified length and move back N bytes
 func (h *Hessian) next(n int) (b []byte) {
 	if n <= 0 {
 		return
@@ -56,14 +55,14 @@ func (h *Hessian) next(n int) (b []byte) {
 	return
 }
 
-//读取指定长度字节,指针不后移
+// peek read the bytes of the specified length and do not move the point
 func (h *Hessian) peek(n int) (b []byte) {
 	b, _ = h.reader.Peek(n)
 	return
 }
 
-//读取指定长度的 utf8 字符
-func (h *Hessian) next_rune(n int) (s []rune) {
+// nextRune reads the utf8 character of the specified length
+func (h *Hessian) nextRune(n int) (s []rune) {
 	for i := 0; i < n; i++ {
 		if r, ri, e := h.reader.ReadRune(); e == nil && ri > 0 {
 			s = append(s, r)
@@ -72,61 +71,61 @@ func (h *Hessian) next_rune(n int) (s []rune) {
 	return
 }
 
-//读取数据类型描述,用于 list 和 map
-func (h *Hessian) read_type() string {
-	if h.peek_byte() != 't' {
+// readType read the type of data for list and map
+func (h *Hessian) readType() string {
+	if h.peekByte() != 't' {
 		return ""
 	}
-	t_len, _ := UnpackInt16(h.peek(3)[1:3])   // 取类型字符串长度
-	t_name := h.next_rune(int(3 + t_len))[3:] //取类型名称
-	return string(t_name)
+	tLen, _ := UnpackInt16(h.peek(3)[1:3]) // take the length of type name
+	tName := h.nextRune(int(3 + tLen))[3:] // take the type name
+	return string(tName)
 }
 
-//解析 hessian 数据包
+// Parse hessian data
 func (h *Hessian) Parse() (v interface{}, err error) {
-	t, err := h.read_byte()
+	t, err := h.readByte()
 	if err == io.EOF {
 		return
 	}
 	switch t {
-	case 'r': //reply
+	case 'r': // reply
 		h.next(2)
 		return h.Parse()
 
-	case 'f': //fault
-		h.Parse() //drop "code"
+	case 'f': // fault
+		h.Parse() // drop "code"
 		code, _ := h.Parse()
-		h.Parse() //drop "message"
+		h.Parse() // drop "message"
 		message, _ := h.Parse()
 		v = nil
-		err = fmt.Errorf("%s : %s", code, message)
-	case 'N': //null
+		err = log.Errorf("%s : %s", code, message)
+	case 'N': // null
 		v = nil
 
-	case 'T': //true
+	case 'T': // true
 		v = true
 
-	case 'F': //false
+	case 'F': // false
 		v = false
 
-	case 'I': //int
+	case 'I': // int
 		if v, err = UnpackInt32(h.next(4)); err != nil {
 			return nil, err
 		}
 
-	case 'L': //long
+	case 'L': // long
 		if v, err = UnpackInt64(h.next(8)); err != nil {
 			v = nil
 			return
 		}
 
-	case 'D': //double
+	case 'D': // double
 		if v, err = UnpackFloat64(h.next(8)); err != nil {
 			v = nil
 			return
 		}
 
-	case 'd': //date
+	case 'd': // date
 		var ms int64
 		if ms, err = UnpackInt64(h.next(8)); err != nil {
 			v = nil
@@ -134,95 +133,95 @@ func (h *Hessian) Parse() (v interface{}, err error) {
 		}
 		v = time.Unix(ms/1000, ms%1000*10E5)
 
-	case 'S', 's', 'X', 'x': //string,xml
-		var str_chunks []rune
-		var len int16
-		for { //避免递归读取 Chunks
-			if len, err = UnpackInt16(h.next(2)); err != nil {
-				str_chunks = nil
+	case 'S', 's', 'X', 'x': // string, xml
+		var strChunks []rune
+		var l int16
+		for { // avoid recursive readings Chunks
+			if l, err = UnpackInt16(h.next(2)); err != nil {
+				strChunks = nil
 				return
 			}
-			str_chunks = append(str_chunks, h.next_rune(int(len))...)
+			strChunks = append(strChunks, h.nextRune(int(l))...)
 			if t == 'S' || t == 'X' {
 				break
 			}
-			if t, err = h.read_byte(); err != nil {
-				str_chunks = nil
+			if t, err = h.readByte(); err != nil {
+				strChunks = nil
 				return
 			}
 		}
-		v = string(str_chunks)
+		v = string(strChunks)
 
-	case 'B', 'b': //binary
-		var bin_chunks []byte //等同于 []uint8,在 反射判断类型的时候，会得到 []uint8
-		var len int16
-		for { //避免递归读取 Chunks
-			if len, err = UnpackInt16(h.next(2)); err != nil {
-				bin_chunks = nil
+	case 'B', 'b': // binary
+		var bChunks []byte // Equivalent to []uint8
+		var l int16
+		for { // avoid recursive readings Chunks
+			if l, err = UnpackInt16(h.next(2)); err != nil {
+				bChunks = nil
 				return
 			}
-			bin_chunks = append(bin_chunks, h.next(int(len))...)
+			bChunks = append(bChunks, h.next(int(l))...)
 			if t == 'B' {
 				break
 			}
-			if t, err = h.read_byte(); err != nil {
-				bin_chunks = nil
+			if t, err = h.readByte(); err != nil {
+				bChunks = nil
 				return
 			}
 		}
-		v = bin_chunks
+		v = bChunks
 
-	case 'V': //list
-		h.read_type()
-		var list_chunks []interface{}
-		if h.peek_byte() == 'l' {
+	case 'V': // list
+		h.readType()
+		var listChunks []interface{}
+		if h.peekByte() == 'l' {
 			h.next(5)
 		}
-		for h.peek_byte() != 'z' {
+		for h.peekByte() != 'z' {
 			if _v, _e := h.Parse(); _e != nil {
-				list_chunks = nil
+				listChunks = nil
 				return
 			} else {
-				list_chunks = append(list_chunks, _v)
+				listChunks = append(listChunks, _v)
 			}
 		}
-		h.read_byte()
-		v = list_chunks
-		h.append_refs(&list_chunks)
+		h.readByte()
+		v = listChunks
+		h.appendRefs(&listChunks)
 
-	case 'M': //map
-		h.read_type()
-		var map_chunks = make(map[interface{}]interface{})
-		for h.peek_byte() != 'z' {
+	case 'M': // map
+		h.readType()
+		var mapChunks = make(map[interface{}]interface{})
+		for h.peekByte() != 'z' {
 			_kv, _ke := h.Parse()
 			if _ke != nil {
-				map_chunks = nil
+				mapChunks = nil
 				err = _ke
 				return
 			}
 			_vv, _ve := h.Parse()
 			if _ve != nil {
-				map_chunks = nil
+				mapChunks = nil
 				err = _ve
 				return
 			}
-			map_chunks[_kv] = _vv
+			mapChunks[_kv] = _vv
 		}
-		h.read_byte()
-		v = map_chunks
-		h.append_refs(&map_chunks)
+		h.readByte()
+		v = mapChunks
+		h.appendRefs(&mapChunks)
 
 	case 'R': //ref
-		var ref_idx int32
-		if ref_idx, err = UnpackInt32(h.next(4)); err != nil {
+		var refIdx int32
+		if refIdx, err = UnpackInt32(h.next(4)); err != nil {
 			return
 		}
-		if len(h.refs) > int(ref_idx) {
-			v = &h.refs[ref_idx]
+		if len(h.refs) > int(refIdx) {
+			v = &h.refs[refIdx]
 		}
 
 	default:
 		err = fmt.Errorf("Invalid type: %v,>>%v<<<", string(t), h.peek(h.len()))
-	} //switch
+	} // switch
 	return
 } // Parse end

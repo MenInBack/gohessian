@@ -14,9 +14,7 @@ type hessianRequest struct {
 	body []byte
 }
 
-// NewClient return a client of hessian
-// host string
-// url  string
+// NewClient return a client for hessian
 func NewClient(host, url string) (c *Client) {
 	host = HostCheck(host)
 	return &Client{
@@ -31,8 +29,6 @@ func (c Client) String() string {
 }
 
 // Invoke send a request to hessian service and return the result of response
-// method string  => hessian service method
-// params ...Any  => request param
 func (c *Client) Invoke(method string, params ...interface{}) (interface{}, error) {
 	reqURL := c.Host + c.URL
 	r := &hessianRequest{}
@@ -65,7 +61,7 @@ func (c *Client) Invoke(method string, params ...interface{}) (interface{}, erro
 	return v, nil
 }
 
-// bind reply to v, v must be a pointer
+// BindResult bind reply to v, v must be a pointer
 func (c *Client) BindResult(v interface{}) error {
 	if reflect.ValueOf(v).Kind() != reflect.Ptr {
 		return errors.New("not a pointer")
